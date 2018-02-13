@@ -23,6 +23,12 @@ Node.js v6.x includes npm@3 by default, but if you are using Node.js v4, be sure
 $ npm install -g npm@3
 ```
 
+### [Git](https://git-scm.com/downloads)
+
+You need to have the `git` command line client installed on your workstation and declared in your PATH (i.e if you type `git` from a command prompt / terminal, it should not fail with "command not found" error).  
+
+Electrode Native is relying on the `git` client for [Cauldron](../platform-parts/cauldron.md) access as well as [Manifest](../platform-parts/manifest.md) access, and also to publish your Containers to git if you want to use such a publisher.
+
 ### [Android Studio](https://developer.android.com/studio/index.html)
 
 You need to install [Android Studio](https://developer.android.com/studio/index.html) if you want your MiniApp to target the Android platform or if you need to generate containers targeting Android mobile applications.
@@ -37,7 +43,8 @@ $ export ANDROID_SDK=/Users/[YOUR_USER_NAME]/Library/Android/sdk
 
 You need to install [Xcode](https://developer.apple.com/xcode/) if you want your MiniApp to target the iOS platform  or if you need to generate containers targeting iOS mobile applications.
 
-Xcode 8.3.2 or later is required to ensure compatibility with Electrode Native.
+- **XCode 8.3.2** or later version is required to ensure compatibility with Electrode Native.
+- **XCode 9.0** or later version is required to use `run-ios` command.
 
 ### Additional optional requirements
 

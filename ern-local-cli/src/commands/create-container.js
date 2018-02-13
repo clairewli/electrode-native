@@ -29,11 +29,6 @@ exports.builder = function (yargs: any) {
       alias: 'd',
       describe: 'Full native application descriptor'
     })
-    .option('version', {
-      type: 'string',
-      alias: 'v',
-      describe: 'Version of the generated container. Default to 1.0.0'
-    })
     .option('jsOnly', {
       type: 'bool',
       alias: 'js',
@@ -43,6 +38,10 @@ exports.builder = function (yargs: any) {
       type: 'array',
       alias: 'm',
       describe: 'A list of one or more miniapps'
+    })
+    .option('jsApiImpls', {
+      type: 'array',
+      describe: 'A list of one or more JS API implementation'
     })
     .option('dependencies', {
       type: 'array',
@@ -55,44 +54,43 @@ exports.builder = function (yargs: any) {
       describe: 'The platform for which to generate the container',
       choices: ['android', 'ios', undefined]
     })
-    .option('containerName', {
-      type: 'string',
-      describe: 'The name to user for the container (usually native application name)'
-    })
     .option('outDir', {
       type: 'string',
       alias: 'out',
       describe: 'Directory to output the generated container to'
+    })
+    .option('ignoreRnpmAssets', {
+      type: 'bool',
+      describe: 'Ignore rppm assets from the MiniApps'
     })
     .epilog(utils.epilog(exports))
 }
 
 exports.handler = async function ({
   descriptor,
-  version = '1.0.0',
   jsOnly,
   outDir,
   miniapps,
+  jsApiImpls = [],
   dependencies = [],
   platform,
-  containerName,
-  publicationUrl
+  publicationUrl,
+  ignoreRnpmAssets
 } : {
   descriptor?: string,
-  version: string,
   jsOnly?: boolean,
   outDir?: string,
   miniapps?: Array<string>,
+  jsApiImpls: Array<string>,
   dependencies: Array<string>,
   platform?: 'android' | 'ios',
-  containerName?: string,
-  publicationUrl?: string
+  publicationUrl?: string,
+  ignoreRnpmAssets?: boolean
 } = {}) {
   let napDescriptor: ?NativeApplicationDescriptor
 
   try {
     await utils.logErrorAndExitIfNotSatisfied({
-      isValidContainerVersion: version ? {containerVersion: version} : undefined,
       noGitOrFilesystemPath: {
         obj: dependencies,
         extraErrorMessage: 'You cannot provide dependencies using git or file schme for this command. Only the form miniapp@version is allowed.'
@@ -153,6 +151,8 @@ exports.handler = async function ({
     }
 
     let miniAppsPaths: Array<PackagePath> = _.map(miniapps, PackagePath.fromString)
+    let jsApiImplsPaths: Array<PackagePath> = _.map(jsApiImpls, PackagePath.fromString)
+
     //
     // --jsOnly switch
     // Ony generates the composite miniapp to a provided output directory
@@ -161,8 +161,8 @@ exports.handler = async function ({
         if (!napDescriptor) {
           return log.error('You need to provide a napDescriptor if not providing miniapps')
         }
-        const miniAppsObjs = await cauldron.getContainerMiniApps(napDescriptor)
-        miniAppsPaths = _.map(miniAppsObjs, m => PackagePath.fromString(m.toString()))
+        miniAppsPaths = await cauldron.getContainerMiniApps(napDescriptor)
+        jsApiImplsPaths = await cauldron.getContainerJsApiImpls(napDescriptor)
       }
 
       let pathToYarnLock
@@ -173,7 +173,8 @@ exports.handler = async function ({
       await generateMiniAppsComposite(
         miniAppsPaths,
         outDir || `${Platform.rootDirectory}/miniAppsComposite`,
-        pathToYarnLock ? {pathToYarnLock} : {})
+        pathToYarnLock ? {pathToYarnLock} : {},
+        jsApiImplsPaths)
     } else {
       if (!napDescriptor && miniapps) {
         if (!platform) {
@@ -189,14 +190,14 @@ exports.handler = async function ({
 
         await spin('Generating Container locally', runLocalContainerGen(
           miniAppsPaths,
+          jsApiImplsPaths,
           platform, {
-            version,
-            nativeAppName: containerName,
             outDir,
-            extraNativeDependencies: _.map(dependencies, d => PackagePath.fromString(d))
+            extraNativeDependencies: _.map(dependencies, d => PackagePath.fromString(d)),
+            ignoreRnpmAssets
           }
         ))
-      } else if (napDescriptor && version) {
+      } else if (napDescriptor) {
         await runCauldronContainerGen(
           napDescriptor,
           {outDir})

@@ -472,7 +472,7 @@ async function performContainerStateUpdateInCauldron (
     // Commit Cauldron transaction
     await spin(`Updating Cauldron`, cauldron.commitTransaction(commitMessage))
 
-    log.debug(`Published new container version ${cauldronContainerVersion} for ${napDescriptor.toString()}`)
+    log.info(`Published new container version ${cauldronContainerVersion} for ${napDescriptor.toString()}`)
   } catch (e) {
     log.error(`[performContainerStateUpdateInCauldron] An error occurred: ${e}`)
     if (cauldron) {
@@ -494,12 +494,14 @@ function epilog ({command} : {command: string}) {
 async function runMiniApp (platform: 'android' | 'ios', {
   mainMiniAppName,
   miniapps,
+  jsApiImpls,
   dependencies,
   descriptor,
   dev
 } : {
   mainMiniAppName?: string,
   miniapps?: Array<string>,
+  jsApiImpls?: Array<string>,
   dependencies?: Array<string>,
   descriptor?: string,
   dev?: boolean
@@ -520,11 +522,20 @@ async function runMiniApp (platform: 'android' | 'ios', {
     throw new Error('You cannot pass extra native dependencies when using a Native Application Descriptor')
   }
 
+  if (jsApiImpls && (jsApiImpls.length > 0) && descriptor) {
+    throw new Error('You cannot pass Javascript API implementations when using a Native Application Descriptor')
+  }
+
   if (miniapps && descriptor) {
     throw new Error('You cannot use miniapps and descriptor at the same time')
   }
 
+  let cauldron
   if (descriptor) {
+    cauldron = await coreUtils.getCauldronInstance()
+    if (cauldron == null) {
+      throw new Error('Boum')
+    }
     await utils.logErrorAndExitIfNotSatisfied({
       isCompleteNapDescriptorString: { descriptor },
       napDescriptorExistInCauldron: {
@@ -563,13 +574,25 @@ async function runMiniApp (platform: 'android' | 'ios', {
       dev = true
       await reactnative.startPackagerInNewWindow(cwd)
     }
+  } else {
+    miniAppsPaths = (cauldron && napDescriptor && await cauldron.getContainerMiniApps(napDescriptor)) || []
   }
 
-  const outDir = path.join(Platform.rootDirectory, 'containergen', platform)
+  let jsApiImplsPaths: Array<PackagePath> = []
+
+  if (jsApiImpls) {
+    jsApiImplsPaths = _.map(jsApiImpls, j => PackagePath.fromString(j))
+  }
+  if (descriptor) {
+    jsApiImplsPaths = (cauldron && napDescriptor && await cauldron.getContainerJsApiImpls(napDescriptor)) || []
+  }
+
+  const outDir = path.join(Platform.rootDirectory, 'containergen', 'out', platform)
   await generateContainerForRunner(platform, {
     napDescriptor: napDescriptor || undefined,
     dependenciesObjs,
     miniAppsPaths,
+    jsApiImplsPaths,
     outDir
   })
 
@@ -615,11 +638,13 @@ async function generateContainerForRunner (
     napDescriptor,
     dependenciesObjs = [],
     miniAppsPaths = [],
+    jsApiImplsPaths = [],
     outDir
   } : {
     napDescriptor?: NativeApplicationDescriptor,
     dependenciesObjs: Array<PackagePath>,
     miniAppsPaths: Array<PackagePath>,
+    jsApiImplsPaths: Array<PackagePath>,
     outDir: string
   } = {}) {
   if (napDescriptor) {
@@ -629,6 +654,7 @@ async function generateContainerForRunner (
   } else {
     await runLocalContainerGen(
     miniAppsPaths,
+    jsApiImplsPaths,
     platform, {
       outDir,
       extraNativeDependencies: dependenciesObjs

@@ -1,5 +1,6 @@
 // @flow
 
+import fs from 'fs'
 import {
   ApiGen
 } from 'ern-api-gen'
@@ -30,7 +31,7 @@ exports.builder = function (yargs: any) {
     describe: 'Author of library'
   }).option('schemaPath', {
     alias: 'm',
-    describe: 'Path to schema(swagger)'
+    describe: 'Path to pre-existing schema(swagger)'
   }).option('skipNpmCheck', {
     describe: 'Skip the check ensuring package does not already exists in NPM registry',
     type: 'bool'
@@ -62,6 +63,10 @@ exports.handler = async function ({
       }
     })
 
+    if (schemaPath && !fs.existsSync(schemaPath)) {
+      throw new Error(`Cannot resolve path to ${schemaPath}`)
+    }
+
     if (!utils.checkIfModuleNameContainsSuffix(apiName, ModuleTypes.API)) {
       apiName = await utils.promptUserToUseSuffixModuleName(apiName, ModuleTypes.API)
     }
@@ -79,20 +84,20 @@ exports.handler = async function ({
     })
 
     if (!skipNpmCheck && !await utils.performPkgNameConflictCheck(packageName)) {
-      throw new Error(`Aborting command `)
+      throw new Error('Aborting command')
     }
 
     const bridgeDep = await manifest.getNativeDependency(PackagePath.fromString('react-native-electrode-bridge'))
     if (!bridgeDep) {
-      throw new Error(`react-native-electrode-bridge not found in manifest. cannot infer version to use`)
+      throw new Error('react-native-electrode-bridge not found in manifest. cannot infer version to use')
     }
     if (!bridgeDep.version) {
-      throw new Error(`react-native-electrode-bridge version needs to be defined`)
+      throw new Error('react-native-electrode-bridge version needs to be defined')
     }
 
     const reactNative = await manifest.getNativeDependency(PackagePath.fromString('react-native'))
     if (!reactNative) {
-      throw new Error(`react-native-electrode-bridge not found in manifest. cannot infer version to use`)
+      throw new Error('react-native-electrode-bridge not found in manifest. cannot infer version to use')
     }
 
     log.info(`Generating ${apiName} API`)
@@ -102,7 +107,7 @@ exports.handler = async function ({
       reactNativeVersion: reactNative.version,
       name: apiName,
       npmScope: scope,
-      modelSchemaPath: schemaPath,
+      apiSchemaPath: schemaPath,
       apiVersion: apiVersion,
       apiAuthor: apiAuthor,
       packageName: packageName

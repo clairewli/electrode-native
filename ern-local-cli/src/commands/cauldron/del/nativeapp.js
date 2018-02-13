@@ -22,16 +22,15 @@ exports.handler = async function ({
     cauldronIsActive: {
       extraErrorMessage: 'A Cauldron must be active in order to use this command'
     },
-    isCompleteNapDescriptorString: { descriptor },
     napDescriptorExistInCauldron: {
       descriptor,
-      extraErrorMessahe: 'This command cannot remove a native application version that do not exist in Cauldron.'
+      extraErrorMessage: 'This command cannot remove a native application version that do not exist in Cauldron.'
     }
   })
 
   try {
     const cauldron = await coreUtils.getCauldronInstance()
-    await cauldron.removeNativeApp(NativeApplicationDescriptor.fromString(descriptor))
+    await cauldron.removeDescriptor(NativeApplicationDescriptor.fromString(descriptor))
   } catch (e) {
     coreUtils.logErrorAndExitProcess(e)
   }

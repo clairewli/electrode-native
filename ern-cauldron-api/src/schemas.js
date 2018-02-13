@@ -2,18 +2,19 @@
 
 import Joi from 'joi'
 
-export const miniApps = Joi.object({
-  container: Joi.array().default([])
+export const container = Joi.object({
+  miniApps: Joi.array().default([]),
+  nativeDeps: Joi.array().default([]),
+  jsApiImpls: Joi.array().default([])
 })
 
 export const nativeApplicationVersion = Joi.object({
   name: Joi.string().required(),
-  ernPlatformVersion: Joi.string().required(),
   isReleased: Joi.boolean().optional().default(false),
   binary: Joi.string().default(null),
   yarnLocks: Joi.object().default({}),
   nativeDeps: Joi.array().default([]),
-  miniApps: miniApps.default(),
+  container: container.default(),
   codePush: Joi.object().default({}),
   containerVersion: Joi.string().optional() // optional for Backward Compat. Required in ERN 0.5.0
 })
@@ -31,3 +32,9 @@ export const nativeApplication = Joi.object({
   name: Joi.string().required(),
   platforms: Joi.array().items(nativeApplicationPlatform).default([])
 })
+
+export const schemaVersion = '1.0.0'
+
+export const cauldronApiVersionBySchemaVersion = {
+  '1.0.0': '0.12.x'
+}

@@ -22,9 +22,9 @@ const androidNativeApplicationDescriptor = `${nativeApplicationName}:android:${n
 const iosNativeApplicationDescriptor = `${nativeApplicationName}:ios:${nativeApplicationVersion}`
 const iosNativeApplicationDescriptorNewVersion = `${nativeApplicationName}:ios:${nativeApplicationVersionNew}`
 const movieListMiniAppPackageName = 'movielistminiapp'
-const movieListMiniAppVersion = '0.0.9'
+const movieListMiniAppVersion = '0.0.10'
 const movieDetailsMiniAppPackageName = 'moviedetailsminiapp'
-const movieDetailsMiniAppVersion = '0.0.8'
+const movieDetailsMiniAppVersion = '0.0.9'
 const movieApi = 'react-native-ernmovie-api'
 const movieApiImpl = 'ErnMovieApiImplNative'
 const movieApiImplPkgName = 'ern-movie-api-impl'
@@ -33,6 +33,8 @@ const processCwd = process.cwd()
 const pathToSystemTestsFixtures = path.join(processCwd, 'system-tests-fixtures')
 const pathToAndroidContainerFixture = path.join(pathToSystemTestsFixtures, 'android-container')
 const pathToIosContainerFixture = path.join(pathToSystemTestsFixtures, 'ios-container')
+const reactNativeMovieApiImplJsPackageName = 'react-native-ernmovie-api-impl-js'
+const reactNativeMovieApiImplJsVersion = '0.0.2'
 
 process.env['SYSTEM_TESTS'] = 'true'
 process.on('SIGINT', () => afterAll())
@@ -87,7 +89,7 @@ function afterAll () {
 // Considering that `index.android.bundle` and `index.android.bundle.meta` can vary legitimately
 // from generation to generation, we allow difference of content for these files
 function areSameAndroidContainers (pathA, pathB) {
-  return areSameContainers(pathA, pathB, ['index.android.bundle', 'index.android.bundle.meta'])
+  return areSameDirectoriesContent(pathA, pathB, ['index.android.bundle', 'index.android.bundle.meta'])
 }
 
 // Given two paths to iOS generated containers, return true if the containers contains the
@@ -98,13 +100,13 @@ function areSameAndroidContainers (pathA, pathB) {
 // ignore differences in this file (furether improvement to system tests should only ignore
 // content that should be ignored in this file)
 function areSameIosContainers (pathA, pathB) {
-  return areSameContainers(pathA, pathB, ['project.pbxproj', 'MiniApp.jsbundle', 'MiniApp.jsbundle.meta'])
+  return areSameDirectoriesContent(pathA, pathB, ['project.pbxproj', 'MiniApp.jsbundle', 'MiniApp.jsbundle.meta'])
 }
 
-function areSameContainers (pathA, pathB, filesToIgnoreContentDiff) {
+function areSameDirectoriesContent (pathA, pathB, filesToIgnoreContentDiff) {
   let result = true
-  const containerDiffs = dircompare.compareSync(pathA, pathB, {compareContent: true})
-  for (const diff of containerDiffs.diffSet) {
+  const directoriesDiff = dircompare.compareSync(pathA, pathB, {compareContent: true})
+  for (const diff of directoriesDiff.diffSet) {
     if (diff.state === 'distinct') {
       if (!filesToIgnoreContentDiff.includes(diff.name1)) {
         console.log('A difference in content was found !')
@@ -161,9 +163,11 @@ run(`ern cauldron add miniapps ${movieDetailsMiniAppPackageName}@${movieDetailsM
 run(`ern cauldron get nativeapp ${iosNativeApplicationDescriptor}`)
 run(`ern cauldron add nativeapp ${iosNativeApplicationDescriptorNewVersion} -c 1000.1000.1`, { expectedExitCode: 1 })
 run(`ern cauldron add nativeapp ${iosNativeApplicationDescriptorNewVersion} -c latest`)
-run(`ern cauldron add dependencies react-native-code-push@5.1.3-beta -d ${androidNativeApplicationDescriptor}`)
-run(`ern cauldron add dependencies react-native-code-push@5.1.3-beta -d ${iosNativeApplicationDescriptor}`)
+run(`ern cauldron add dependencies react-native-code-push@5.2.1 -d ${androidNativeApplicationDescriptor}`)
+run(`ern cauldron add dependencies react-native-code-push@5.2.1 -d ${iosNativeApplicationDescriptor}`)
 run(`ern cauldron get dependency ${iosNativeApplicationDescriptorNewVersion}`)
+run(`ern cauldron add jsapiimpls ${reactNativeMovieApiImplJsPackageName}@${reactNativeMovieApiImplJsVersion} -d ${androidNativeApplicationDescriptor}`)
+run(`ern cauldron add jsapiimpls ${reactNativeMovieApiImplJsPackageName}@${reactNativeMovieApiImplJsVersion} -d ${iosNativeApplicationDescriptor}`)
 run(`ern cauldron get nativeapp`)
 
 run(`ern cauldron get config ${iosNativeApplicationDescriptorNewVersion}`)
@@ -174,11 +178,11 @@ run(`ern cauldron add miniapps ${movieDetailsMiniAppPackageName}@${movieDetailsM
 run(`ern cauldron add miniapps ${packageNotInNpm} -d ${androidNativeApplicationDescriptor}`, { expectedExitCode: 1 })
 
 // Container gen should be successful for the two following commands
-run(`ern create-container --miniapps file:${miniAppPath} -p android -v 1.0.0`)
-run(`ern create-container --miniapps file:${miniAppPath} -p ios -v 1.0.0`)
+run(`ern create-container --miniapps file:${miniAppPath} -p android`)
+run(`ern create-container --miniapps file:${miniAppPath} -p ios`)
 
-run(`ern create-container --miniapps file:${miniAppPath} ${movieListMiniAppPackageName}@${movieListMiniAppVersion} -p android -v 1.0.0`)
-run(`ern create-container --miniapps file:${miniAppPath} ${movieListMiniAppPackageName}@${movieListMiniAppVersion} -p ios -v 1.0.0`)
+run(`ern create-container --miniapps file:${miniAppPath} ${movieListMiniAppPackageName}@${movieListMiniAppVersion} -p android`)
+run(`ern create-container --miniapps file:${miniAppPath} ${movieListMiniAppPackageName}@${movieListMiniAppVersion} -p ios`)
 
 const androidContainerOutDir = tmp.dirSync({ unsafeCleanup: true }).name
 run(`ern create-container --descriptor ${androidNativeApplicationDescriptor} --out ${androidContainerOutDir}`)
@@ -199,6 +203,9 @@ run(`ern cauldron del miniapps ${movieListMiniAppPackageName} -d ${androidNative
 // Del dependency should now succeed
 run(`ern cauldron del dependencies react-native-ernmovie-api -d ${androidNativeApplicationDescriptor}`)
 run(`ern cauldron get nativeapp ${androidNativeApplicationDescriptor}`)
+
+// Del jsapiimpls
+run(`ern cauldron del jsapiimpls ${reactNativeMovieApiImplJsPackageName}@${reactNativeMovieApiImplJsVersion} -d ${androidNativeApplicationDescriptor}`)
 
 // Del nativeapp
 run(`ern cauldron del nativeapp ${androidNativeApplicationDescriptor}`)

@@ -1,4 +1,5 @@
 import path from 'path'
+import fs from 'fs'
 import {
   fileUtils,
   ModuleTypes
@@ -92,14 +93,16 @@ export function generatePackageJson ({
   }, null, 2)
 }
 
-export function generateInitialSchema ({
+export async function generateInitialSchema ({
   namespace,
-  shouldGenerateBlankApi
+  apiSchemaPath
 } : {
   namespace?: string,
-  shouldGenerateBlankApi?: boolean
+  apiSchemaPath: string
 }) {
-  return shouldGenerateBlankApi ? '' : `
+  return  apiSchemaPath && fs.existsSync(apiSchemaPath)
+      ?  fileUtils.readFile(apiSchemaPath)
+      :`
   {
     "swagger": "2.0",
     "info": {
@@ -218,7 +221,7 @@ export function generateFlowConfig(): string  {
 
 export default async function generateProject (config: Object = {}, outFolder: string) {
   await fileUtils.writeFile(path.join(outFolder, PKG_FILE), generatePackageJson(config))
-  await fileUtils.writeFile(path.join(outFolder, MODEL_FILE), generateInitialSchema(config))
+  await fileUtils.writeFile(path.join(outFolder, MODEL_FILE), await generateInitialSchema(config))
   await fileUtils.writeFile(path.join(outFolder, FLOW_CONFIG_FILE), generateFlowConfig())
   await generateSwagger(config, outFolder)
 }

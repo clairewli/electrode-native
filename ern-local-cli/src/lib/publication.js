@@ -29,6 +29,53 @@ import path from 'path'
 import fs from 'fs'
 import shell from 'shelljs'
 import * as constants from './constants'
+import semver from 'semver'
+
+export function containsVersionMismatch (
+  versions: Array<string>,
+  mismatchLevel: 'major' | 'minor' | 'patch') : boolean {
+  const minVersion = semver.minSatisfying(versions, '*')
+  const maxVersion = semver.maxSatisfying(versions, '*')
+  const majorMismatch = semver.major(maxVersion) !== semver.major(minVersion)
+  const minorMismatch = semver.minor(maxVersion) !== semver.minor(minVersion)
+  const patchMismatch = semver.patch(maxVersion) !== semver.patch(minVersion)
+  return majorMismatch ||
+        (minorMismatch && (mismatchLevel === 'minor' || mismatchLevel === 'patch')) ||
+        (patchMismatch && mismatchLevel === 'patch')
+}
+
+export function resolvePluginsVersions (
+  plugins: Array<PackagePath>,
+  mismatchLevel: 'major' | 'minor' | 'patch') : {
+  resolved: Array<PackagePath>,
+  pluginsWithMismatchingVersions: Array<string>
+} {
+  let result = {
+    resolved: [],
+    pluginsWithMismatchingVersions: []
+  }
+
+  let pluginsByBasePath = _.groupBy(_.unionBy(plugins, p => p.toString()), 'basePath')
+  for (const basePath of Object.keys(pluginsByBasePath)) {
+    const entry = pluginsByBasePath[basePath]
+    const pluginVersions = _.map(entry, 'version')
+    if (pluginVersions.length > 1) {
+      // If there are multiple versions of the dependency being used across all MiniApps
+      if (containsVersionMismatch(pluginVersions, mismatchLevel)) {
+        // If at least one of the versions major digit differs, deem incompatibility
+        result.pluginsWithMismatchingVersions.push(basePath)
+      } else {
+        // No mismatchLevel version differences, just return the highest version
+        result.resolved.push(_.find(entry, c => c.basePath === basePath && c.version === semver.maxSatisfying(pluginVersions, '*')))
+      }
+    } else {
+      // Only one version is used across all MiniApps, just use this version
+      result.resolved.push(entry[0])
+    }
+  }
+
+  return result
+}
 
 // Run container generator locally, without relying on the Cauldron, given a list of miniapp packages
 // The string used to represent a miniapp package can be anything supported by `yarn add` command
@@ -38,15 +85,19 @@ import * as constants from './constants'
 // FROM FS  => file:/Users/username/Code/MiniApp
 export async function runLocalContainerGen (
 miniappPackagesPaths: Array<PackagePath>,
+jsApiImplsPackagePaths: Array<PackagePath>,
 platform: 'android' | 'ios', {
-  outDir = `${Platform.rootDirectory}/containergen`,
-  extraNativeDependencies = []
+  outDir = path.join(Platform.rootDirectory, 'containergen'),
+  extraNativeDependencies = [],
+  ignoreRnpmAssets = false
 }: {
   outDir?: string,
-  extraNativeDependencies: Array<PackagePath>
+  extraNativeDependencies: Array<PackagePath>,
+  ignoreRnpmAssets?: boolean
 } = {}) {
   try {
-    const nativeDependenciesStrings: Set <string> = new Set()
+    let apisAndNativeApisImpls: Array<PackagePath> = []
+    let nativeModulesInManifest: Array<PackagePath> = []
     let miniapps: Array<MiniApp> = []
 
     for (const miniappPackagePath of miniappPackagesPaths) {
@@ -62,33 +113,44 @@ platform: 'android' | 'ios', {
       miniapps.push(currentMiniApp)
 
       const nativeDependencies = await currentMiniApp.getNativeDependencies()
-      const supportedNativeDependencies = [
+
+      const miniAppApisAndNativeApisImpls = [
         ...nativeDependencies.apis,
-        ...nativeDependencies.nativeApisImpl,
-        ...nativeDependencies.thirdPartyInManifest ]
-      supportedNativeDependencies.forEach(d => nativeDependenciesStrings.add(d.toString()))
+        ...nativeDependencies.nativeApisImpl ]
+      apisAndNativeApisImpls = apisAndNativeApisImpls.concat(miniAppApisAndNativeApisImpls)
+
+      const miniAppNativeModulesInManifest = nativeDependencies.thirdPartyInManifest
+      nativeModulesInManifest = nativeModulesInManifest.concat(miniAppNativeModulesInManifest)
     }
 
-    let nativeDependencies = _.map(Array.from(nativeDependenciesStrings), d => PackagePath.fromString(d))
-    nativeDependencies = nativeDependencies.concat(extraNativeDependencies)
+    // Move react-native-electrode-bridge from nativeModulesInManifest array to apisAndNativeApisImpls array
+    // as when it comes to version compatibility checks, react-native-electrode-bridge should be considered
+    // in the same way as APIs and APIs implementations (it's a native module exception)
+    const bridgeDep = _.remove(apisAndNativeApisImpls, d => d.basePath === 'react-native-electrode-bridge')
+    nativeModulesInManifest = nativeModulesInManifest.concat(bridgeDep)
 
-    // Verify uniqueness of native dependencies (that all miniapps are using the same
-    // native dependencies version). This is a requirement in order to generate a proper container
-    const nativeDependenciesWithoutVersion: Array<string> = _.map(nativeDependencies, d => d.basePath)
-    const duplicateNativeDependencies =
-      _(nativeDependenciesWithoutVersion).groupBy().pickBy(x => x.length > 1).keys().value()
-    if (duplicateNativeDependencies.length > 0) {
-      throw new Error(`The following native dependencies are not using the same version: ${duplicateNativeDependencies}`)
+    const apiAndApiImplsResolvedVersions = resolvePluginsVersions(apisAndNativeApisImpls, 'major')
+    const nativeModulesResolvedVersions = resolvePluginsVersions(nativeModulesInManifest, 'patch')
+
+    if (apiAndApiImplsResolvedVersions.pluginsWithMismatchingVersions.length > 0 ||
+        nativeModulesResolvedVersions.pluginsWithMismatchingVersions.length > 0) {
+      throw new Error(`The following plugins are not using compatible versions : 
+        ${apiAndApiImplsResolvedVersions.pluginsWithMismatchingVersions.toString()} 
+        ${nativeModulesResolvedVersions.pluginsWithMismatchingVersions.toString()}`)
     }
 
     const generator = getGeneratorForPlatform(platform)
 
     await spin('Generating Container', generator.generate({
       miniApps: miniapps,
+      jsApiImpls: jsApiImplsPackagePaths,
       outDir,
-      plugins: nativeDependencies,
+      plugins: [
+        ...apiAndApiImplsResolvedVersions.resolved,
+        ...nativeModulesResolvedVersions.resolved ],
       pluginsDownloadDir: tmp.dirSync({ unsafeCleanup: true }).name,
-      compositeMiniAppDir: tmp.dirSync({ unsafeCleanup: true }).name
+      compositeMiniAppDir: tmp.dirSync({ unsafeCleanup: true }).name,
+      ignoreRnpmAssets
     }))
   } catch (e) {
     log.error(`runLocalContainerGen failed: ${e}`)
@@ -117,6 +179,7 @@ napDescriptor: NativeApplicationDescriptor, {
     const cauldron = await coreUtils.getCauldronInstance()
     const plugins = await cauldron.getNativeDependencies(napDescriptor)
     const miniapps = await cauldron.getContainerMiniApps(napDescriptor)
+    const jsApiImpls = await cauldron.getContainerJsApiImpls(napDescriptor)
     const pathToYarnLock = await cauldron.getPathToYarnLock(napDescriptor, constants.CONTAINER_YARN_KEY)
 
     if (!napDescriptor.platform) {
@@ -141,6 +204,7 @@ napDescriptor: NativeApplicationDescriptor, {
       `Creating Container for ${napDescriptor.toString()} from Cauldron`,
       generator.generate({
         miniApps: miniAppsInstances,
+        jsApiImpls,
         outDir: outDir || path.join(Platform.rootDirectory, 'containergen', 'out', platform),
         plugins,
         ignoreRnpmAssets: containerGeneratorConfig && containerGeneratorConfig.ignoreRnpmAssets,
@@ -230,6 +294,8 @@ export async function performCodePushPromote (
         continue
       }
 
+      const jsApiImpls = await cauldron.getCodePushJsApiImpls(sourceNapDescriptor, sourceDeploymentName)
+
       const nativeDependenciesVersionAligned =
         await areMiniAppsNativeDependenciesAlignedWithTargetApplicationVersion(miniApps, targetNapDescriptor)
 
@@ -269,7 +335,8 @@ export async function performCodePushPromote (
           releasedBy: result.releasedBy,
           rollout: result.rollout
         },
-        miniApps)
+        miniApps,
+        jsApiImpls || [])
 
       cauldronCommitMessage.push(`- ${targetNapDescriptor.toString()}`)
     }
@@ -286,7 +353,8 @@ export async function performCodePushPromote (
 export async function performCodePushOtaUpdate (
 napDescriptor: NativeApplicationDescriptor,
 deploymentName: string,
-miniApps: Array<PackagePath>, {
+miniApps: Array<PackagePath>,
+jsApiImpls: Array<PackagePath>, {
   force = false,
   codePushIsMandatoryRelease = false,
   codePushRolloutPercentage,
@@ -304,28 +372,29 @@ miniApps: Array<PackagePath>, {
     var cauldron = await coreUtils.getCauldronInstance()
     const plugins = await cauldron.getNativeDependencies(napDescriptor)
     await cauldron.beginTransaction()
-    const codePushPlugin = _.find(plugins, p => p.name === 'react-native-code-push')
+    const codePushPlugin = _.find(plugins, p => p.basePath === 'react-native-code-push')
     if (!codePushPlugin) {
       throw new Error('react-native-code-push plugin is not in native app !')
     }
 
     const tmpWorkingDir = tmp.dirSync({ unsafeCleanup: true }).name
 
-    const nativeDependenciesVersionAligned =
+    const miniAppsNativeDependenciesVersionAligned =
       await areMiniAppsNativeDependenciesAlignedWithTargetApplicationVersion(miniApps, napDescriptor)
 
-    if (!nativeDependenciesVersionAligned && force) {
-      log.warn('Native dependencies versions are not aligned but ignoring due to the use of force flag')
-    } else if (!nativeDependenciesVersionAligned && !force) {
+    if (!miniAppsNativeDependenciesVersionAligned && force) {
+      log.warn('Native dependencies versions of MiniApps are not aligned but ignoring due to the use of force flag')
+    } else if (!miniAppsNativeDependenciesVersionAligned && !force) {
       if (!await askUserToForceCodePushPublication()) {
         throw new Error('CodePush publication aborted')
       }
     }
 
     const latestCodePushedMiniApps = await cauldron.getCodePushMiniApps(napDescriptor, deploymentName)
+    const latestCodePushedJsApiImpls = await cauldron.getCodePushJsApiImpls(napDescriptor, deploymentName)
 
-    // We need to include, in this CodePush bundle, all the MiniApps that were part
-    // of the previous CodePush. We will override versions of the MiniApps with
+    // We need to include, in this CodePush bundle, all the MiniApps and JS API implementations that were part
+    // of the previous CodePush. We will override versions of the MiniApps and JS API implementations with
     // the one provided to this function, and keep other ones intact.
     // For example, if previous CodePush bundle was containing MiniAppOne@1.0.0 and
     // MiniAppTwo@1.0.0 and this method is called to CodePush MiniAppOne@2.0.0, then
@@ -337,12 +406,20 @@ miniApps: Array<PackagePath>, {
       referenceMiniAppsToCodePush = await cauldron.getContainerMiniApps(napDescriptor)
     }
 
+    let referenceJsApiImplsToCodePush = latestCodePushedJsApiImpls
+    if (!referenceJsApiImplsToCodePush || referenceJsApiImplsToCodePush.length === 0) {
+      referenceJsApiImplsToCodePush = await cauldron.getContainerJsApiImpls(napDescriptor)
+    }
+
     const miniAppsToBeCodePushed = _.unionBy(
       miniApps, referenceMiniAppsToCodePush, x => x.basePath)
 
+    const jsApiImplsToBeCodePushed = _.unionBy(
+      jsApiImpls, referenceJsApiImplsToCodePush, x => x.basePath)
+
     // If force or skipFinalConfirmation was not provided as option, we ask user for confirmation before proceeding
     // with code-push publication
-    const userConfirmedCodePushPublication = force || skipConfirmation || await askUserToConfirmCodePushPublication(miniAppsToBeCodePushed)
+    const userConfirmedCodePushPublication = force || skipConfirmation || await askUserToConfirmCodePushPublication(miniAppsToBeCodePushed, jsApiImplsToBeCodePushed)
 
     if (!userConfirmedCodePushPublication) {
       return log.info('CodePush publication aborted')
@@ -351,8 +428,10 @@ miniApps: Array<PackagePath>, {
     }
 
     const pathsToMiniAppsToBeCodePushed = _.map(miniAppsToBeCodePushed, m => PackagePath.fromString(m.toString()))
-    await spin('Generating composite miniapps',
-       generateMiniAppsComposite(pathsToMiniAppsToBeCodePushed, tmpWorkingDir, {pathToYarnLock}))
+    const pathToJsApiImplsToBeCodePushed = _.map(jsApiImplsToBeCodePushed, j => PackagePath.fromString(j.toString()))
+
+    await spin('Generating composite module',
+       generateMiniAppsComposite(pathsToMiniAppsToBeCodePushed, tmpWorkingDir, {pathToYarnLock}, pathToJsApiImplsToBeCodePushed))
 
     const bundleOutputDirectory = path.join(tmpWorkingDir, 'bundleOut')
     shell.mkdir('-p', bundleOutputDirectory)
@@ -392,7 +471,8 @@ miniApps: Array<PackagePath>, {
         releasedBy: codePushResponse.releasedBy,
         rollout: codePushResponse.rollout
       },
-      miniAppsToBeCodePushed)
+      miniAppsToBeCodePushed,
+      jsApiImplsToBeCodePushed)
 
     const pathToNewYarnLock = path.join(tmpWorkingDir, 'yarn.lock')
     await spin(`Adding yarn.lock to Cauldron`, cauldron.addOrUpdateYarnLock(napDescriptor, deploymentName, pathToNewYarnLock))
@@ -459,14 +539,12 @@ async function getCodePushAppName (
 }
 
 export function getCodePushAccessKey () {
-  let codePushAccessKey = config.getValue('codePushAccessKey')
-  if (!codePushAccessKey) {
-    const codePushConfigFilePath = path.join(process.env.LOCALAPPDATA || process.env.HOME || '', '.code-push.config')
-    if (fs.existsSync(codePushConfigFilePath)) {
-      codePushAccessKey = JSON.parse(fs.readFileSync(codePushConfigFilePath, 'utf-8')).accessKey
-    }
+  const codePushConfigFilePath = path.join(process.env.LOCALAPPDATA || process.env.HOME || '', '.code-push.config')
+  if (fs.existsSync(codePushConfigFilePath)) {
+    return JSON.parse(fs.readFileSync(codePushConfigFilePath, 'utf-8')).accessKey
+  } else {
+    return config.getValue('codePushAccessKey')
   }
-  return codePushAccessKey
 }
 
 export function getCodePushSdk () {
@@ -477,9 +555,17 @@ export function getCodePushSdk () {
   return new CodePushSdk(codePushAccessKey)
 }
 
-async function askUserToConfirmCodePushPublication (miniAppsToBeCodePushed: Array<PackagePath>) : Promise<boolean> {
-  log.info(`The following MiniApp versions will get shipped in this CodePush OTA update :`)
-  miniAppsToBeCodePushed.forEach(m => log.info(m.toString()))
+async function askUserToConfirmCodePushPublication (
+  miniAppsToBeCodePushed: Array<PackagePath>,
+  jsApiImplsToBeCodePushed: Array<PackagePath>) : Promise<boolean> {
+  if (miniAppsToBeCodePushed && miniAppsToBeCodePushed.length > 0) {
+    log.info(`The following MiniApp versions will get shipped in this CodePush OTA update :`)
+    miniAppsToBeCodePushed.forEach(m => log.info(m.toString()))
+  }
+  if (jsApiImplsToBeCodePushed && jsApiImplsToBeCodePushed.length > 0) {
+    log.info(`The following JS API implementation versions will get shipped in this CodePush OTA update :`)
+    jsApiImplsToBeCodePushed.forEach(m => log.info(m.toString()))
+  }
 
   const { userCodePushPublicationConfirmation } = await inquirer.prompt({
     type: 'confirm',
@@ -504,7 +590,7 @@ export async function askUserForCodePushDeploymentName (napDescriptor: NativeApp
   const cauldron = await coreUtils.getCauldronInstance()
   const config = await cauldron.getConfig(napDescriptor)
   const hasCodePushDeploymentsConfig = config && config.codePush && config.codePush.deployments
-  const choices = hasCodePushDeploymentsConfig ? config.codePush.deployments : undefined
+  const choices = hasCodePushDeploymentsConfig ? config && config.codePush.deployments : undefined
 
   const { userSelectedDeploymentName } = await inquirer.prompt({
     type: choices ? 'list' : 'input',

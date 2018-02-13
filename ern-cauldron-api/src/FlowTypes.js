@@ -14,21 +14,22 @@ export type CauldronCodePushMetadata = {
 
 export type CauldronCodePushEntry = {
   metadata: CauldronCodePushMetadata,
-  miniapps: Array<string>
+  miniapps: Array<string>,
+  jsApiImpls: Array<string>
 }
 
-export type CauldronMiniApps = {
-  container: Array<string>,
+export type CauldronContainer = {
+  miniApps: Array<string>,
+  nativeDeps: Array<string>,
+  jsApiImpls: Array<string>
 }
 
 export type CauldronNativeAppVersion = {
   name: string,
-  ernPlatormVersion: string,
   isReleased: boolean,
   binary: ?string,
   yarnLocks: Object,
-  nativeDeps: Array<string>,
-  miniApps: CauldronMiniApps,
+  container: CauldronContainer,
   codePush: Object,
   config?: Object,
   containerVersion: string
@@ -47,6 +48,7 @@ export type CauldronNativeApp = {
 }
 
 export type Cauldron = {
+  schemaVersion: string,
   config?: Object,
   nativeApps: Array<CauldronNativeApp>
 }
