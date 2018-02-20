@@ -2,7 +2,10 @@ const shell = require('shelljs')
 const chalk = require('chalk')
 const tmp = require('tmp')
 const path = require('path')
+const fs = require('fs')
+require('colors')
 const dircompare = require('dir-compare')
+const jsdiff = require('diff')
 const workingDirectoryPath = tmp.dirSync({ unsafeCleanup: true }).name
 const info = chalk.bold.blue
 
@@ -13,6 +16,7 @@ const cauldronName = 'cauldron-automation'
 const miniAppName = 'MiniAppSystemTest'
 const miniAppPackageName = 'miniapp-system-test'
 const apiName = 'TestApi'
+const complexApi = 'ComplexApi'
 const apiPkgName = 'test'
 const invalidElectrodeNativeModuleName = 'Test-Api' // alpha only is valid
 const nativeApplicationName = 'system-test-app'
@@ -22,9 +26,9 @@ const androidNativeApplicationDescriptor = `${nativeApplicationName}:android:${n
 const iosNativeApplicationDescriptor = `${nativeApplicationName}:ios:${nativeApplicationVersion}`
 const iosNativeApplicationDescriptorNewVersion = `${nativeApplicationName}:ios:${nativeApplicationVersionNew}`
 const movieListMiniAppPackageName = 'movielistminiapp'
-const movieListMiniAppVersion = '0.0.10'
+const movieListMiniAppVersion = '0.0.11'
 const movieDetailsMiniAppPackageName = 'moviedetailsminiapp'
-const movieDetailsMiniAppVersion = '0.0.9'
+const movieDetailsMiniAppVersion = '0.0.10'
 const movieApi = 'react-native-ernmovie-api'
 const movieApiImpl = 'ErnMovieApiImplNative'
 const movieApiImplPkgName = 'ern-movie-api-impl'
@@ -33,6 +37,23 @@ const processCwd = process.cwd()
 const pathToSystemTestsFixtures = path.join(processCwd, 'system-tests-fixtures')
 const pathToAndroidContainerFixture = path.join(pathToSystemTestsFixtures, 'android-container')
 const pathToIosContainerFixture = path.join(pathToSystemTestsFixtures, 'ios-container')
+const pathToApiFixtureDir = path.join(pathToSystemTestsFixtures, 'api')
+const pathToComplexSchema = path.join(pathToApiFixtureDir, 'ComplexApi', 'schema.json')
+const pathToApiImplNative = path.join(pathToSystemTestsFixtures, 'api-impl-native')
+const pathToApiImplJS = path.join(pathToSystemTestsFixtures, 'api-impl-js')
+const filesToIgnore = [
+  'ElectrodeApiImpl.xcodeproj',
+  'project.pbxproj',
+  'package.json',
+  '.DS_Store',
+  'index.android.bundle',
+  'index.android.bundle.meta',
+  'yarn.lock',
+  'README.md',
+  'WalmartItemApi.spec.js',
+  'SysteTestEventApi.spec.js',
+  'SystemTestsApi.spec.js'
+]
 const reactNativeMovieApiImplJsPackageName = 'react-native-ernmovie-api-impl-js'
 const reactNativeMovieApiImplJsVersion = '0.0.2'
 
@@ -103,7 +124,7 @@ function areSameIosContainers (pathA, pathB) {
   return areSameDirectoriesContent(pathA, pathB, ['project.pbxproj', 'MiniApp.jsbundle', 'MiniApp.jsbundle.meta'])
 }
 
-function areSameDirectoriesContent (pathA, pathB, filesToIgnoreContentDiff) {
+function areSameDirectoriesContent (pathA, pathB, filesToIgnoreContentDiff = []) {
   let result = true
   const directoriesDiff = dircompare.compareSync(pathA, pathB, {compareContent: true})
   for (const diff of directoriesDiff.diffSet) {
@@ -111,6 +132,14 @@ function areSameDirectoriesContent (pathA, pathB, filesToIgnoreContentDiff) {
       if (!filesToIgnoreContentDiff.includes(diff.name1)) {
         console.log('A difference in content was found !')
         console.log(JSON.stringify(diff))
+        let diffLine = jsdiff.diffLines(
+          fs.readFileSync(path.join(diff.path1, diff.name1)).toString(),
+          fs.readFileSync(path.join(diff.path2, diff.name2)).toString())
+        diffLine.forEach((part) => {
+          let color = part.added ? 'green'
+            : part.removed ? 'red' : 'grey'
+          process.stderr.write(part.value[color])
+        })
         result = false
       }
     }
@@ -217,11 +246,6 @@ process.chdir(workingDirectoryPath)
 
 // api
 run(`ern create-api ${invalidElectrodeNativeModuleName} --skipNpmCheck`, { expectedExitCode: 1 })
-run(`ern create-api ${apiName} -p ${apiPkgName} --skipNpmCheck`)
-const apiPath = path.join(process.cwd(), apiName)
-console.log(info(`Entering ${apiPath}`))
-process.chdir(apiPath)
-run('ern regen-api --skipVersion')
 
 // api-impl
 run(`ern create-api-impl ${packageNotInNpm} --skipNpmCheck --nativeOnly --force`, { expectedExitCode: 1 })
@@ -237,5 +261,27 @@ run('ern platform current')
 run('ern platform list')
 run('ern platform plugins list')
 run('ern platform plugins search react-native')
+
+process.chdir(workingDirectoryPath)
+run(`ern create-api ${apiName} -p ${apiPkgName} --skipNpmCheck`)
+assert(areSameDirectoriesContent(pathToApiFixtureDir, workingDirectoryPath, filesToIgnore), 'Generated API differ from reference fixture !')
+const apiPath = path.join(process.cwd(), apiName)
+console.log(info(`Entering ${apiPath}`))
+process.chdir(apiPath)
+run('ern regen-api --skipVersion')
+
+process.chdir(workingDirectoryPath)
+run(`ern create-api ${complexApi} -p ${apiPkgName}  --schemaPath ${pathToComplexSchema} --skipNpmCheck`)
+assert(areSameDirectoriesContent(pathToApiFixtureDir, workingDirectoryPath, filesToIgnore), 'Generated API differ from reference fixture !')
+
+//  Tests for API IMPL Native
+process.chdir(workingDirectoryPath)
+run(`ern create-api-impl ${movieApi} -p ${movieApiImplPkgName} --skipNpmCheck --nativeOnly --outputDirectory ${workingDirectoryPath} --force`)
+assert(areSameDirectoriesContent(pathToApiImplNative, workingDirectoryPath, filesToIgnore), 'Generated API Native Impl differ from reference fixture !')
+
+//  Tests for API IMPL JS
+process.chdir(workingDirectoryPath)
+run(`ern create-api-impl ${movieApi} -p ${movieApiImplPkgName} --skipNpmCheck --jsOnly --outputDirectory ${workingDirectoryPath} --force`)
+assert(areSameDirectoriesContent(pathToApiImplJS, workingDirectoryPath, filesToIgnore), 'Generated API JS Impl differ from reference fixture !')
 
 afterAll()

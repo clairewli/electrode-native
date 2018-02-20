@@ -17,7 +17,7 @@ While your actual coding experience won't change, the CLI commands you'll intera
 Some of the commands from the React Native CLI have been replaced with a few Electrode Native CLI commands.  
 
 For example, instead of running the `react-native run-ios` command to launch your React Native MiniApp inside an iOS simulator or real device, you will use the `ern run-ios` command.  
-Instead of using the `react-native start` command, you'll use the `ern start` command. Most of these commands will actually invoke the associated React Native commands, but the Electrode Native CLI commands perform additional platform-specific logic. Also you won't have to use the React Native `link` command due to the fact that supported native dependencies will be automatically linked.  
+Instead of using the `react-native start` command, you'll use the `ern start` command. Most of these commands will actually invoke the associated React Native commands, but the Electrode Native CLI commands perform additional platform-specific logic. Also you won't have to use the React Native `react-native link` command due to the fact that supported native dependencies will be automatically linked.  
 
 ### As a mobile developer what does a MiniApp mean to me?
 
@@ -45,7 +45,7 @@ There are a few considerations and recommendations that you want to read about b
 
   However, the Electrode Native platform also does not support "all" third-party native modules. Each native module needs to be listed in the platform manifest and configurations must be modified so that the native modules can be properly injected into any container.  
 
-  Considering that the Electrode Native master manifest is a public GitHub repository, and is not bound to a specific platform release lifecycle--anyone can contribute to it in order to add new native module support for their own--as well as any other developer's use!
+  Considering that the [Electrode Native master manifest](https://github.com/electrode-io/electrode-native-manifest) is a public GitHub repository, and is not bound to a specific platform release lifecycle--anyone can contribute to it in order to add new native module support for their own--as well as any other developer's use!
 
 **CodePush OTA updates**
 

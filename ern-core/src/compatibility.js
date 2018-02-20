@@ -51,7 +51,7 @@ export async function checkCompatibilityWithPlatform (miniApp: MiniApp, platform
 // Log compatiblity report to terminal in a fancy table
 export async function logCompatibilityReportTable (report: Object) {
   var table = new Table({
-    head: [chalk.cyan('Scope'),
+    head: [
       chalk.cyan('Name'),
       chalk.cyan('Needed Version'),
       chalk.cyan('Local Version')
@@ -61,7 +61,6 @@ export async function logCompatibilityReportTable (report: Object) {
 
   for (const compatibleEntry of report.compatible) {
     table.push([
-      compatibleEntry.scope ? compatibleEntry.scope : '',
       compatibleEntry.dependencyName,
       chalk.green(compatibleEntry.remoteVersion ? compatibleEntry.remoteVersion : ''),
       chalk.green(compatibleEntry.localVersion ? compatibleEntry.localVersion : '')
@@ -70,7 +69,6 @@ export async function logCompatibilityReportTable (report: Object) {
 
   for (const compatibleNonStrictEntry of report.compatibleNonStrict) {
     table.push([
-      compatibleNonStrictEntry.scope ? compatibleNonStrictEntry.scope : '',
       compatibleNonStrictEntry.dependencyName,
       chalk.yellow(compatibleNonStrictEntry.remoteVersion ? compatibleNonStrictEntry.remoteVersion : ''),
       chalk.yellow(compatibleNonStrictEntry.localVersion ? compatibleNonStrictEntry.localVersion : '')
@@ -79,7 +77,6 @@ export async function logCompatibilityReportTable (report: Object) {
 
   for (const incompatibleEntry of report.incompatible) {
     table.push([
-      incompatibleEntry.scope ? incompatibleEntry.scope : '',
       incompatibleEntry.dependencyName,
       incompatibleEntry.remoteVersion,
       chalk.red(incompatibleEntry.localVersion)
@@ -233,7 +230,7 @@ export function getCompatibility (
       (localDepVersion !== remoteDep.version)) {
       // Todo : do not infer api or api-impl by looking solely at the suffix as its not mandatory anymore, so
       // we might get false negatives
-      if (localDep.name.endsWith('-api') || localDep.name.endsWith('-api-impl') || (localDep.name === 'react-native-electrode-bridge')) {
+      if (localDep.basePath.endsWith('-api') || localDep.basePath.endsWith('-api-impl') || (localDep.basePath === 'react-native-electrode-bridge')) {
         if (semver.major(localDepVersion) === semver.major(remoteDep.version)) {
           result.compatibleNonStrict.push(entry)
         } else if (semver.lt(localDepVersion, remoteDep.version)) {

@@ -37,7 +37,7 @@ The Electrode Native manifest repository contains:
 
 Open source MiniApp developers should always use the master manifest. This is the default operating mode of the platform.
 
-To align your native dependencies to a new Electrode Native version, use the `ern upgrade` command. When you align the native dependencies to a new Electrode Native version, your MiniApp will be able to be added to any mobile application using any Electrode Native version.
+To align your native dependencies to a new Electrode Native version, use the `ern upgrade-miniapp` command. When you align the native dependencies to a new Electrode Native version, your MiniApp will be able to be added to any mobile application using any Electrode Native version.
 
 You might also consider using the same version of React Native for your mobile application, for a while, before upgrading to a new version of React Native. Indeed, upgrading (the version of react-native or associated native modules) too frequently might harm your release process because you cannot use CodePush to release updates to versions of your mobile application that have already been released with a different version of React Native.
 
@@ -45,11 +45,11 @@ For each new Electrode Native version, the master manifest will contain updated 
 
 ### Overriding the master Manifest
 
-You can override the master manifest with your own manifest file:
+You can override the master manifest partially or fully with your own manifest file:
 
 - To stick to some specific native dependencies versions over time while still allowing for Electrode Native version updates
-- To allow for the use of non open-sourced (private) native modules in your MiniApps.
-- To facilitate contributions to the master manifest if you plan to add support for open source native modules
+- To allow for the use of non open-sourced (private) native modules in your MiniApps
+- To facilitate contributions to the master manifest, if you plan to add support for open source native modules
 
 To override a manifest:
 
@@ -57,7 +57,7 @@ To override a manifest:
 2. Create a manifest override configuration in your cauldron--so that it is correctly applied to all users of this cauldron.
 3. Update and maintain your manifest as needed, over time.
 
-The following example shows a configuration that includes a manifest override.
+The following example shows a configuration that includes a partial manifest override.
 
 ```json
 "config": {
@@ -70,7 +70,7 @@ The following example shows a configuration that includes a manifest override.
 }
 ```
 
-The configuration object should be manually added to your cauldron at the same level as the `nativeApps` array.  
+The configuration object should be **manually added to your cauldron** at the same level as the `nativeApps` array.  
 
 * The `override url` is the url of the GitHub repository containing your own Manifest  
 * The `override type` value can be either partial or full. For most use cases you'll use the partial; full can be useful in rare cases.
@@ -105,8 +105,11 @@ If the Electrode Native version you are using does not yet support a native modu
 **Why does Electrode Native require a plugin configuration?**  
 In a pure React Native mobile application, you can use the `react-native link` command (formerly the `rnpm` command) to add a React Native plugin (native module) to your React Native application. However, Electrode Native requires that you add the native modules to a container library--not directly to a mobile application.  
 
-**Note**  Electrode Native generated APIs and API implementations have a specific structure
+**Note**
+Electrode Native generated APIs and API implementations have a specific structure
 and additional configuration is not needed to support them in Electrode Native. However, if you plan to work on a new native module, it's recommended that you consider using Electrode Native APIs.
+
+#### Creating plugin configurations
 
 In the manifest repository, the supported plugin configurations are located in the plugins directory. This plugins directory contains sub-directories that follow a specific naming convention that is used by Electrode Native to correctly match a plugin version with a plugin configuration--for a specific Electrode Native version.
 
@@ -133,7 +136,8 @@ The naming of these directories includes the minimum version of the plugin that 
 
 The plugin configuration file is located within these sub-directories.
 
-####Configuration example  
+#### Configuration example  
+
 The following example shows the configuration files for the `react-native-code-push` plugin.  
 The directory is view-able [here](https://gecgithub01.walmart.com/Electrode-Mobile-Platform/ern-master-manifest/tree/master/plugins/ern_v0.3.0%2B/react-native-code-push_v1.17.0%2B)
 
@@ -160,6 +164,7 @@ There are two supported injection configuration directives:
 * The `platform specific directives` can be used only in the context of a specific platform.  
 
 #### Platform-agnostic directives
+
 The platform-agnostic directives are described in this section.
 
 - `copy`
@@ -208,6 +213,7 @@ The objects contain a `path` property, a `string` property and a `replaceWith` p
 This example shows how to replace the string `"RCTBridgeModule.h"` with `<React/RCTBridgeModule.h>` in the `/Libraries/RNLocation/RNLocation.h` file in the container.
 
 #### Platform-specific directives
+
 The platform-specific directives for Android and iOS are described in this section.
 
 #### Android
