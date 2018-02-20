@@ -190,7 +190,7 @@ static dispatch_semaphore_t semaphore;
 }
 
 - (void)loadCustomFonts {
-    NSMutableArray *fontPaths = [[NSBundle frameworkBundle] pathsForResourcesOfType:nil inDirectory:nil];
+    NSMutableArray *fontPaths = [[[NSBundle frameworkBundle] pathsForResourcesOfType:nil inDirectory:nil] mutableCopy];
     for (NSString *fontPath in fontPaths) {
         if ([[fontPath pathExtension] isEqualToString:@"ttf"] || [[fontPath pathExtension] isEqualToString:@"otf"]) {
             NSData *inData = [NSData dataWithContentsOfFile:fontPath];
